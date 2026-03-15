@@ -18,14 +18,30 @@
         <h1 class="text-2xl font-bold mb-4 text-blue-600 text-center">🚲 Rowerowy Manager</h1>
 
         <div id="settingsPanel" class="hidden mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg shadow-inner">
-            <label class="block text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-2">Ustawienia
-                stawki</label>
-            <div class="flex items-center gap-2">
-                <input id="rateInput" type="number" step="0.01" class="flex-1 border p-2 rounded text-sm bg-white"
-                    placeholder="Stawka (np. 0.70)">
-                <span class="text-sm font-bold text-orange-600">zł/km</span>
-                <button onclick="saveRate()"
-                    class="bg-orange-500 text-white px-4 py-2 rounded text-sm font-bold shadow hover:bg-orange-600">Zapisz</button>
+            <label class="block text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-3">Ustawienia
+                kosztów</label>
+            <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-gray-600 w-16">Rower:</span>
+                    <input id="rateInput" type="number" step="0.01" class="flex-1 border p-2 rounded text-sm bg-white"
+                        placeholder="Stawka (np. 0.70)">
+                    <span class="text-sm font-bold text-orange-600 w-12">zł/km</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-gray-600 w-16">Paliwo:</span>
+                    <input id="fuelPriceInput" type="number" step="0.01"
+                        class="flex-1 border p-2 rounded text-sm bg-white" placeholder="Cena (np. 6.50)">
+                    <span class="text-sm font-bold text-orange-600 w-12">zł/l</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-gray-600 w-16">Spalanie:</span>
+                    <input id="fuelConsumptionInput" type="number" step="0.1"
+                        class="flex-1 border p-2 rounded text-sm bg-white" placeholder="Średnie (np. 7.0)">
+                    <span class="text-sm font-bold text-orange-600 w-12">l/100</span>
+                </div>
+                <button onclick="saveSettings()"
+                    class="w-full bg-orange-500 text-white px-4 py-2 mt-1 rounded text-sm font-bold shadow hover:bg-orange-600">Zapisz
+                    ustawienia</button>
             </div>
         </div>
 
@@ -92,9 +108,13 @@
         </div>
 
         <div class="mt-6 text-center bg-blue-600 p-5 rounded-xl shadow-xl border-b-4 border-blue-800">
-            <p class="text-blue-100 text-[10px] uppercase font-bold tracking-widest">Oszczędności w filtrze</p>
-            <p id="totalSavings" class="text-4xl font-black text-white py-1">0.00 zł</p>
-            <p id="totalKm" class="text-blue-200 text-xs font-medium">0 km łącznie</p>
+            <p class="text-blue-100 text-[10px] uppercase font-bold tracking-widest">Oszczędność względem auta</p>
+            <p id="totalSavings" class="text-4xl font-black text-green-300 py-1">0.00 zł</p>
+            <div class="flex justify-center gap-4 mt-2 mb-1">
+                <p id="totalCarCostLabel" class="text-blue-200 text-xs font-medium">Auto: 0.00 zł</p>
+                <p id="totalBikeCostLabel" class="text-blue-200 text-xs font-medium">Rower: 0.00 zł</p>
+            </div>
+            <p id="totalKm" class="text-blue-100 text-xs font-bold pt-2 border-t border-blue-500/50">0 km łącznie</p>
         </div>
 
         <div id="history" class="mt-6 space-y-3 max-h-[400px] overflow-y-auto">
@@ -123,23 +143,28 @@
         document.getElementById('rideDate').valueAsDate = new Date();
         let allRides = [];
 
-        // --- OBSŁUGA STAWKI ---
+        // --- OBSŁUGA USTAWIEŃ KOSZTÓW ---
         window.toggleSettings = () => {
             document.getElementById('settingsPanel').classList.toggle('hidden');
         };
 
-        window.saveRate = () => {
+        window.saveSettings = () => {
             const newRate = document.getElementById('rateInput').value;
-            if (newRate) {
-                localStorage.setItem('bikeRate', newRate);
-                applyFilters(); // Przelicz wszystko na nowo
-                toggleSettings();
-            }
+            const fuelPrice = document.getElementById('fuelPriceInput').value;
+            const fuelCons = document.getElementById('fuelConsumptionInput').value;
+
+            if (newRate) localStorage.setItem('bikeRate', newRate);
+            if (fuelPrice) localStorage.setItem('fuelPrice', fuelPrice);
+            if (fuelCons) localStorage.setItem('fuelConsumption', fuelCons);
+
+            applyFilters(); // Przelicz wszystko na nowo
+            toggleSettings();
         };
 
-        // Inicjalizacja stawki w polu tekstowym
-        const currentRate = localStorage.getItem('bikeRate') || "0.70";
-        document.getElementById('rateInput').value = currentRate;
+        // Inicjalizacja stawek w polach tekstowych
+        document.getElementById('rateInput').value = localStorage.getItem('bikeRate') || "0.70";
+        document.getElementById('fuelPriceInput').value = localStorage.getItem('fuelPrice') || "6.50";
+        document.getElementById('fuelConsumptionInput').value = localStorage.getItem('fuelConsumption') || "7.0";
 
         // --- SZYBKIE TRASY ---
         window.addQuickRoute = async () => {
@@ -217,10 +242,14 @@
             const type = document.getElementById('customName').value || "Trasa";
             const date = document.getElementById('rideDate').value;
             const rate = parseFloat(localStorage.getItem('bikeRate')) || 0.70;
+            const fuelPrice = parseFloat(localStorage.getItem('fuelPrice')) || 6.50;
+            const fuelCons = parseFloat(localStorage.getItem('fuelConsumption')) || 7.0;
 
             if (!km || !date) return alert("Wypełnij dystans i datę!");
 
-            const data = { km, type, rideDate: date, savings: km * rate, updatedAt: new Date() };
+            const carCost = km * (fuelCons / 100) * fuelPrice;
+            const bikeCost = km * rate;
+            const data = { km, type, rideDate: date, savings: carCost - bikeCost, updatedAt: new Date() };
             try {
                 if (id) await updateDoc(doc(db, "rides", id), data);
                 else { data.createdAt = new Date(); await addDoc(colRides, data); }
@@ -252,16 +281,24 @@
 
         function renderHistory(dataList) {
             const currentRate = parseFloat(localStorage.getItem('bikeRate')) || 0.70;
-            let totalS = 0, totalK = 0, html = "";
+            const fuelPrice = parseFloat(localStorage.getItem('fuelPrice')) || 6.50;
+            const fuelCons = parseFloat(localStorage.getItem('fuelConsumption')) || 7.0;
+
+            let totalBikeCost = 0, totalCarCost = 0, totalK = 0, html = "";
 
             if (dataList.length === 0) {
                 html = '<p class="text-center text-gray-400 text-sm italic py-4">Brak wpisów dla tego okresu.</p>';
             } else {
                 dataList.forEach(item => {
-                    // Przeliczamy oszczędności na podstawie AKTUALNEJ stawki w ustawieniach
-                    const currentSavings = item.km * currentRate;
-                    totalS += currentSavings;
+                    // Przeliczamy na bieżąco według ustawień
+                    const bikeCost = item.km * currentRate;
+                    const carCost = item.km * (fuelCons / 100) * fuelPrice;
+                    const savings = carCost - bikeCost;
+
+                    totalBikeCost += bikeCost;
+                    totalCarCost += carCost;
                     totalK += item.km;
+
                     html += `
                     <div class="bg-white border-l-4 border-blue-500 p-3 shadow-sm rounded flex justify-between items-center animate-in fade-in duration-300">
                         <div onclick="startEdit('${item.id}', ${item.km}, '${item.type}', '${item.rideDate}')" class="flex-1 cursor-pointer">
@@ -269,13 +306,21 @@
                             <div class="text-[10px] text-gray-400 uppercase tracking-tight">${item.rideDate}</div>
                         </div>
                         <div class="flex items-center gap-3">
-                            <span class="font-bold text-green-600 text-sm">+${currentSavings.toFixed(2)} zł</span>
+                            <div class="flex flex-col items-end">
+                                <span class="font-bold text-green-600 text-sm">+${savings.toFixed(2)} zł</span>
+                                <span class="text-[9px] text-gray-400">A:${carCost.toFixed(2)} | R:${bikeCost.toFixed(2)}</span>
+                            </div>
                             <button onclick="deleteRide('${item.id}')" class="text-red-200 hover:text-red-500 text-xl transition">🗑</button>
                         </div>
                     </div>`;
                 });
             }
-            document.getElementById('totalSavings').innerText = totalS.toFixed(2) + " zł";
+
+            const totalSavings = totalCarCost - totalBikeCost;
+
+            document.getElementById('totalSavings').innerText = totalSavings.toFixed(2) + " zł";
+            document.getElementById('totalCarCostLabel').innerText = "Auto: " + totalCarCost.toFixed(2) + " zł";
+            document.getElementById('totalBikeCostLabel').innerText = "Rower: " + totalBikeCost.toFixed(2) + " zł";
             document.getElementById('totalKm').innerText = totalK.toFixed(1) + " km łącznie";
             document.getElementById('history').innerHTML = html;
         }
