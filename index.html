@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bike Pro - Naprawiona Historia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 p-5 font-sans pb-20">
+
+    <div class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6">
+        <h1 class="text-2xl font-bold mb-4 text-blue-600 text-center">🚲 Rowerowy Manager</h1>
+
+        <div class="mb-6 flex gap-2 bg-blue-50 p-3 rounded-lg border border-blue-100 shadow-sm">
+            <select id="filterMonth" onchange="applyFilters()" class="flex-1 border p-2 rounded text-sm bg-white">
+                <option value="all">Wszystkie miesiące</option>
+                <option value="01">Styczeń</option>
+                <option value="02">Luty</option>
+                <option value="03">Marzec</option>
+                <option value="04">Kwiecień</option>
+                <option value="05">Maj</option>
+                <option value="06">Czerwiec</option>
+                <option value="07">Lipiec</option>
+                <option value="08">Sierpień</option>
+                <option value="09">Wrzesień</option>
+                <option value="10">Październik</option>
+                <option value="11">Listopad</option>
+                <option value="12">Grudzień</option>
+            </select>
+            <select id="filterYear" onchange="applyFilters()" class="w-24 border p-2 rounded text-sm bg-white">
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+            </select>
+        </div>
+
+        <div class="mb-6 p-3 bg-gray-50 rounded-lg border border-gray-200 shadow-inner">
+            <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Twoje szybkie trasy:</label>
+            <div id="quickButtonsList" class="flex flex-wrap gap-2 mt-2">
+                <span class="text-xs text-gray-400 italic">Ładowanie...</span>
+            </div>
+
+            <div class="mt-3 flex gap-1 items-end border-t pt-2">
+                <input id="quickEditId" type="hidden">
+                <div class="flex-1">
+                    <input id="newQuickName" type="text" placeholder="Nazwa" class="text-xs border p-1 rounded w-full">
+                </div>
+                <div class="w-16">
+                    <input id="newQuickKm" type="number" step="0.1" placeholder="km"
+                        class="text-xs border p-1 rounded w-full">
+                </div>
+                <button id="addQuickBtn" onclick="addQuickRoute()"
+                    class="bg-green-500 text-white px-3 py-1 rounded text-lg font-bold">+</button>
+                <button id="cancelQuickBtn" onclick="resetQuickForm()"
+                    class="hidden bg-gray-400 text-white px-3 py-1 rounded">✕</button>
+            </div>
+        </div>
+
+        <div id="formContainer" class="space-y-4 p-4 bg-white rounded-lg border-2 border-blue-100 shadow-md">
+            <input id="editId" type="hidden">
+            <div class="grid grid-cols-2 gap-2">
+                <input id="rideDate" type="date" class="border p-2 rounded w-full text-sm">
+                <input id="customKm" type="number" step="0.1" placeholder="Dystans km"
+                    class="border p-2 rounded w-full text-sm">
+            </div>
+            <input id="customName" type="text" placeholder="Nazwa przejazdu" class="border p-2 rounded w-full text-sm">
+
+            <div class="flex gap-2">
+                <button id="submitBtn" onclick="processEntry()"
+                    class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-bold shadow hover:bg-blue-700 active:scale-95 transition">Dodaj
+                    do historii</button>
+                <button id="cancelBtn" onclick="resetForm()"
+                    class="hidden bg-gray-400 text-white px-4 py-3 rounded-lg">X</button>
+            </div>
+        </div>
+
+        <div class="mt-6 text-center bg-blue-600 p-5 rounded-xl shadow-xl border-b-4 border-blue-800">
+            <p class="text-blue-100 text-[10px] uppercase font-bold tracking-widest">Oszczędności w filtrze</p>
+            <p id="totalSavings" class="text-4xl font-black text-white py-1">0.00 zł</p>
+            <p id="totalKm" class="text-blue-200 text-xs font-medium">0 km łącznie</p>
+        </div>
+
+        <div id="history" class="mt-6 space-y-3 max-h-[400px] overflow-y-auto">
+            <p class="text-center text-gray-400 text-sm italic">Brak wpisów dla wybranych filtrów.</p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBMfgwlZ-TXQkDQ1P4ZcJs3rmXTLm0n71s",
+            authDomain: "bikeapp-218b6.firebaseapp.com",
+            projectId: "bikeapp-218b6",
+            storageBucket: "bikeapp-218b6.firebasestorage.app",
+            messagingSenderId: "1085315140827",
+            appId: "1:1085315140827:web:a46b446df6da573eb5d0fe"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const colRides = collection(db, "rides");
+        const colQuick = collection(db, "quickRoutes");
+
+        document.getElementById('rideDate').valueAsDate = new Date();
+        let allRides = [];
+
+        // --- SZYBKIE TRASY ---
+        window.addQuickRoute = async () => {
+            const id = document.getElementById('quickEditId').value;
+            const name = document.getElementById('newQuickName').value;
+            const km = parseFloat(document.getElementById('newQuickKm').value);
+            if (!name || !km) return;
+            try {
+                if (id) await updateDoc(doc(db, "quickRoutes", id), { name, km });
+                else await addDoc(colQuick, { name, km, createdAt: new Date() });
+                resetQuickForm();
+            } catch (e) { alert("Błąd zapisu trasy!"); }
+        };
+
+        window.startEditQuick = (id, name, km) => {
+            document.getElementById('quickEditId').value = id;
+            document.getElementById('newQuickName').value = name;
+            document.getElementById('newQuickKm').value = km;
+            document.getElementById('addQuickBtn').innerHTML = "💾";
+            document.getElementById('addQuickBtn').classList.replace('bg-green-500', 'bg-orange-500');
+            document.getElementById('cancelQuickBtn').classList.remove('hidden');
+        };
+
+        window.resetQuickForm = () => {
+            document.getElementById('quickEditId').value = "";
+            document.getElementById('newQuickName').value = "";
+            document.getElementById('newQuickKm').value = "";
+            document.getElementById('addQuickBtn').innerHTML = "+";
+            document.getElementById('addQuickBtn').classList.replace('bg-orange-500', 'bg-green-500');
+            document.getElementById('cancelQuickBtn').classList.add('hidden');
+        };
+
+        window.deleteQuickRoute = async (id) => {
+            if (confirm("Usunąć szybką trasę?")) await deleteDoc(doc(db, "quickRoutes", id));
+        };
+
+        onSnapshot(colQuick, (snap) => {
+            let html = "";
+            snap.docs.forEach(d => {
+                const q = d.data();
+                html += `
+                <div class="flex items-center bg-white border border-gray-200 rounded px-2 py-1 shadow-sm">
+                    <div class="flex flex-col cursor-pointer mr-3" onclick="fillForm(${q.km}, '${q.name}')">
+                        <span class="text-blue-600 font-bold text-xs">${q.name}</span>
+                        <span class="text-[9px] text-gray-500">${q.km}km</span>
+                    </div>
+                    <button onclick="startEditQuick('${d.id}', '${q.name}', ${q.km})" class="text-gray-300 hover:text-orange-500 mx-2 text-xs">✎</button>
+                    <button onclick="deleteQuickRoute('${d.id}')" class="text-red-200 hover:text-red-500 font-bold">×</button>
+                </div>`;
+            });
+            document.getElementById('quickButtonsList').innerHTML = html || '<span class="text-xs text-gray-400 italic">Brak tras.</span>';
+        });
+
+        // --- HISTORIA I WPISY ---
+        window.fillForm = (km, name) => {
+            document.getElementById('customKm').value = km;
+            document.getElementById('customName').value = name;
+        };
+
+        window.applyFilters = () => {
+            const m = document.getElementById('filterMonth').value;
+            const y = document.getElementById('filterYear').value;
+
+            let filtered = allRides;
+            if (m !== 'all') {
+                filtered = allRides.filter(r => r.rideDate && r.rideDate.split('-')[1] === m);
+            }
+            filtered = filtered.filter(r => r.rideDate && r.rideDate.split('-')[0] === y);
+            renderHistory(filtered);
+        };
+
+        window.processEntry = async () => {
+            const id = document.getElementById('editId').value;
+            const km = parseFloat(document.getElementById('customKm').value);
+            const type = document.getElementById('customName').value || "Trasa";
+            const date = document.getElementById('rideDate').value;
+            const rate = parseFloat(localStorage.getItem('bikeRate')) || 0.70;
+
+            if (!km || !date) return alert("Wypełnij dystans i datę!");
+
+            const data = { km, type, rideDate: date, savings: km * rate, updatedAt: new Date() };
+            try {
+                if (id) await updateDoc(doc(db, "rides", id), data);
+                else { data.createdAt = new Date(); await addDoc(colRides, data); }
+                resetForm();
+            } catch (e) { alert("Błąd bazy danych!"); console.error(e); }
+        };
+
+        window.resetForm = () => {
+            document.getElementById('editId').value = "";
+            document.getElementById('customKm').value = "";
+            document.getElementById('customName').value = "";
+            document.getElementById('submitBtn').innerText = "Dodaj do historii";
+            document.getElementById('submitBtn').classList.replace('bg-orange-500', 'bg-blue-600');
+            document.getElementById('cancelBtn').classList.add('hidden');
+        };
+
+        window.startEdit = (id, km, name, date) => {
+            document.getElementById('editId').value = id;
+            document.getElementById('customKm').value = km;
+            document.getElementById('customName').value = name;
+            document.getElementById('rideDate').value = date;
+            document.getElementById('submitBtn').innerText = "Zapisz zmiany";
+            document.getElementById('submitBtn').classList.replace('bg-blue-600', 'bg-orange-500');
+            document.getElementById('cancelBtn').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        window.deleteRide = async (id) => { if (confirm("Usunąć ten wpis?")) await deleteDoc(doc(db, "rides", id)); };
+
+        function renderHistory(dataList) {
+            let totalS = 0, totalK = 0, html = "";
+            if (dataList.length === 0) {
+                html = '<p class="text-center text-gray-400 text-sm italic py-4">Brak wpisów dla tego okresu.</p>';
+            } else {
+                dataList.forEach(item => {
+                    totalS += item.savings;
+                    totalK += item.km;
+                    html += `
+                    <div class="bg-white border-l-4 border-blue-500 p-3 shadow-sm rounded flex justify-between items-center animate-in fade-in duration-300">
+                        <div onclick="startEdit('${item.id}', ${item.km}, '${item.type}', '${item.rideDate}')" class="flex-1 cursor-pointer">
+                            <div class="font-bold text-gray-800 text-sm">${item.type} (${item.km} km)</div>
+                            <div class="text-[10px] text-gray-400 uppercase tracking-tight">${item.rideDate}</div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-green-600 text-sm">+${item.savings.toFixed(2)} zł</span>
+                            <button onclick="deleteRide('${item.id}')" class="text-red-200 hover:text-red-500 text-xl transition">🗑</button>
+                        </div>
+                    </div>`;
+                });
+            }
+            document.getElementById('totalSavings').innerText = totalS.toFixed(2) + " zł";
+            document.getElementById('totalKm').innerText = totalK.toFixed(1) + " km łącznie";
+            document.getElementById('history').innerHTML = html;
+        }
+
+        // Pobieranie danych (uproszczone zapytanie bez ryzyka błędu indeksu)
+        onSnapshot(colRides, (snap) => {
+            allRides = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Sortujemy lokalnie w JS, żeby nie wymagać indeksów od Firebase
+            allRides.sort((a, b) => {
+                const dateA = a.createdAt?.toDate() || 0;
+                const dateB = b.createdAt?.toDate() || 0;
+                return dateB - dateA;
+            });
+            applyFilters();
+        }, (err) => {
+            console.error("Błąd Firebase:", err);
+            alert("Błąd połączenia z bazą!");
+        });
+    </script>
+</body>
+
+</html>
