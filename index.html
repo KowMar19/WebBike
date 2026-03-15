@@ -98,6 +98,31 @@
             </div>
             <input id="customName" type="text" placeholder="Nazwa przejazdu" class="border p-2 rounded w-full text-sm">
 
+            <details class="text-sm text-gray-600 mb-2">
+                <summary class="cursor-pointer font-bold mb-2 transition hover:text-blue-600">Nadpisz stawki dla tej
+                    trasy</summary>
+                <div class="grid grid-cols-3 gap-2 mt-2 bg-gray-50 p-2 rounded border border-gray-200 shadow-inner">
+                    <div>
+                        <label class="text-[9px] uppercase font-bold tracking-wider block text-gray-400 mb-1">Rower
+                            (zł/km)</label>
+                        <input id="rideRate" type="number" step="0.01" class="border p-1 rounded w-full text-xs"
+                            placeholder="Domyślna">
+                    </div>
+                    <div>
+                        <label class="text-[9px] uppercase font-bold tracking-wider block text-gray-400 mb-1">Paliwo
+                            (zł/l)</label>
+                        <input id="rideFuelPrice" type="number" step="0.01" class="border p-1 rounded w-full text-xs"
+                            placeholder="Domyślna">
+                    </div>
+                    <div>
+                        <label
+                            class="text-[9px] uppercase font-bold tracking-wider block text-gray-400 mb-1">Spalanie</label>
+                        <input id="rideFuelCons" type="number" step="0.1" class="border p-1 rounded w-full text-xs"
+                            placeholder="Domyślne">
+                    </div>
+                </div>
+            </details>
+
             <div class="flex gap-2">
                 <button id="submitBtn" onclick="processEntry()"
                     class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-bold shadow hover:bg-blue-700 active:scale-95 transition">Dodaj
@@ -241,15 +266,28 @@
             const km = parseFloat(document.getElementById('customKm').value);
             const type = document.getElementById('customName').value || "Trasa";
             const date = document.getElementById('rideDate').value;
-            const rate = parseFloat(localStorage.getItem('bikeRate')) || 0.70;
-            const fuelPrice = parseFloat(localStorage.getItem('fuelPrice')) || 6.50;
-            const fuelCons = parseFloat(localStorage.getItem('fuelConsumption')) || 7.0;
 
             if (!km || !date) return alert("Wypełnij dystans i datę!");
 
+            const globalRate = parseFloat(localStorage.getItem('bikeRate')) || 0.70;
+            const globalFuelPrice = parseFloat(localStorage.getItem('fuelPrice')) || 6.50;
+            const globalFuelCons = parseFloat(localStorage.getItem('fuelConsumption')) || 7.0;
+
+            const rateInput = document.getElementById('rideRate').value;
+            const fuelPriceInput = document.getElementById('rideFuelPrice').value;
+            const fuelConsInput = document.getElementById('rideFuelCons').value;
+
+            const rate = rateInput !== "" ? parseFloat(rateInput) : globalRate;
+            const fuelPrice = fuelPriceInput !== "" ? parseFloat(fuelPriceInput) : globalFuelPrice;
+            const fuelCons = fuelConsInput !== "" ? parseFloat(fuelConsInput) : globalFuelCons;
+
             const carCost = km * (fuelCons / 100) * fuelPrice;
             const bikeCost = km * rate;
-            const data = { km, type, rideDate: date, savings: carCost - bikeCost, updatedAt: new Date() };
+            const data = {
+                km, type, rideDate: date,
+                bikeRate: rate, fuelPrice: fuelPrice, fuelConsumption: fuelCons,
+                savings: carCost - bikeCost, updatedAt: new Date()
+            };
             try {
                 if (id) await updateDoc(doc(db, "rides", id), data);
                 else { data.createdAt = new Date(); await addDoc(colRides, data); }
@@ -261,16 +299,22 @@
             document.getElementById('editId').value = "";
             document.getElementById('customKm').value = "";
             document.getElementById('customName').value = "";
+            document.getElementById('rideRate').value = "";
+            document.getElementById('rideFuelPrice').value = "";
+            document.getElementById('rideFuelCons').value = "";
             document.getElementById('submitBtn').innerText = "Dodaj do historii";
             document.getElementById('submitBtn').classList.replace('bg-orange-500', 'bg-blue-600');
             document.getElementById('cancelBtn').classList.add('hidden');
         };
 
-        window.startEdit = (id, km, name, date) => {
+        window.startEdit = (id, km, name, date, rate, fuelP, fuelC) => {
             document.getElementById('editId').value = id;
             document.getElementById('customKm').value = km;
             document.getElementById('customName').value = name;
             document.getElementById('rideDate').value = date;
+            document.getElementById('rideRate').value = rate;
+            document.getElementById('rideFuelPrice').value = fuelP;
+            document.getElementById('rideFuelCons').value = fuelC;
             document.getElementById('submitBtn').innerText = "Zapisz zmiany";
             document.getElementById('submitBtn').classList.replace('bg-blue-600', 'bg-orange-500');
             document.getElementById('cancelBtn').classList.remove('hidden');
@@ -280,9 +324,9 @@
         window.deleteRide = async (id) => { if (confirm("Usunąć ten wpis?")) await deleteDoc(doc(db, "rides", id)); };
 
         function renderHistory(dataList) {
-            const currentRate = parseFloat(localStorage.getItem('bikeRate')) || 0.70;
-            const fuelPrice = parseFloat(localStorage.getItem('fuelPrice')) || 6.50;
-            const fuelCons = parseFloat(localStorage.getItem('fuelConsumption')) || 7.0;
+            const globalRate = parseFloat(localStorage.getItem('bikeRate')) || 0.70;
+            const globalFuelPrice = parseFloat(localStorage.getItem('fuelPrice')) || 6.50;
+            const globalFuelCons = parseFloat(localStorage.getItem('fuelConsumption')) || 7.0;
 
             let totalBikeCost = 0, totalCarCost = 0, totalK = 0, html = "";
 
@@ -290,9 +334,13 @@
                 html = '<p class="text-center text-gray-400 text-sm italic py-4">Brak wpisów dla tego okresu.</p>';
             } else {
                 dataList.forEach(item => {
-                    // Przeliczamy na bieżąco według ustawień
-                    const bikeCost = item.km * currentRate;
-                    const carCost = item.km * (fuelCons / 100) * fuelPrice;
+                    // Używamy zapisanej migawki (snapshot) z Firebase, a jeśli jest to stary wpis bez stawek - wartości globalnych
+                    const rideRate = item.bikeRate !== undefined ? item.bikeRate : globalRate;
+                    const rideFuelPrice = item.fuelPrice !== undefined ? item.fuelPrice : globalFuelPrice;
+                    const rideFuelCons = item.fuelConsumption !== undefined ? item.fuelConsumption : globalFuelCons;
+
+                    const bikeCost = item.km * rideRate;
+                    const carCost = item.km * (rideFuelCons / 100) * rideFuelPrice;
                     const savings = carCost - bikeCost;
 
                     totalBikeCost += bikeCost;
@@ -301,7 +349,7 @@
 
                     html += `
                     <div class="bg-white border-l-4 border-blue-500 p-3 shadow-sm rounded flex justify-between items-center animate-in fade-in duration-300">
-                        <div onclick="startEdit('${item.id}', ${item.km}, '${item.type}', '${item.rideDate}')" class="flex-1 cursor-pointer">
+                        <div onclick="startEdit('${item.id}', ${item.km}, '${item.type}', '${item.rideDate}', ${rideRate}, ${rideFuelPrice}, ${rideFuelCons})" class="flex-1 cursor-pointer">
                             <div class="font-bold text-gray-800 text-sm">${item.type} (${item.km} km)</div>
                             <div class="text-[10px] text-gray-400 uppercase tracking-tight">${item.rideDate}</div>
                         </div>
